@@ -1,2 +1,11 @@
-openai-whisper
+transformers
+accelerate
 aiogram
+beautifulsoup4
+einops
+requests
+numpy
+faiss-gpu
+sentence-transformers
+tqdm
+groq

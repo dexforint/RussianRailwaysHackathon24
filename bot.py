@@ -4,106 +4,177 @@ Telegram бот для конвертации голосового/аудио с
 """
 
 import logging
-import os
-from pathlib import Path
-
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types.input_file import InputFile
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.filters import Command
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.context import FSMContext
+from aiogram.types.input_file import FSInputFile
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery
+from aiogram import Router
 from dotenv import load_dotenv
 
+from aiogram.types import Update
+from aiogram.dispatcher.middlewares.base import BaseMiddleware
 from stt import audio_to_text
-from tts import text_to_ogg
+from task_tools import generate_answer
+
+import os
+
+logging.basicConfig(level=logging.INFO)
+
 
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-bot = Bot(token=TELEGRAM_TOKEN)  # Объект бота
-dp = Dispatcher(bot)  # Диспетчер для бота
-
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    filename="bot.log",
-)
+bot = Bot(token=TELEGRAM_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
+router = Router()
 
 
-# Хэндлер на команду /start , /help
-@dp.message_handler(commands=["start", "help"])
-async def cmd_start(message: types.Message):
-    await message.reply(
-        'Привет! Это Паровозик - бот, который поможет вам ответить на ваши вопросы РЖД. Команда: "Паровозик, который смог"'
+database = {}
+
+router = Router()
+
+# Словарь, который будет хранить роли пользователей
+user_id2role = {}
+
+# Доступные роли
+roles = ["простой сотрудник", "машинист", "инженер", "оператор", "менеджер", "кадровик"]
+
+
+# Команда /role для выбора роли
+@router.message(Command("role"))
+async def choose_role(message: Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=role, callback_data=role)] for role in roles
+        ]
+    )
+    await message.answer(
+        f"Ваша текущая роль: {user_id2role[message.from_user.id]} \n Выберите свою роль:",
+        reply_markup=keyboard,
     )
 
 
-# Хэндлер на команду /test
-@dp.message_handler(commands="test")
-async def cmd_test(message: types.Message):
-    """
-    Обработчик команды /test
-    """
-    await message.answer("Test")
+# Обработчик выбора роли
+@router.callback_query(F.data.in_(roles))
+async def role_callback(callback: CallbackQuery):
+    # Получаем ID пользователя и выбранную роль
+    user_id = callback.from_user.id
+    selected_role = callback.data
+
+    # Сохраняем роль в словарь
+    user_id2role[user_id] = selected_role
+
+    # Подтверждение выбора
+    await callback.message.edit_text(f"Ваша роль была установлена как: {selected_role}")
+
+    # Уведомляем, что кнопка была обработана
+    await callback.answer()
 
 
-# Хэндлер на получение текста
-@dp.message_handler(content_types=[types.ContentType.TEXT])
-async def cmd_text(message: types.Message):
-    """
-    Обработчик на получение текста
-    """
-    await message.reply("Текст получен")
-
-    out_filename = text_to_ogg(message.text)
-
-    # Отправка голосового сообщения
-    path = Path("", out_filename)
-    voice = InputFile(path)
-    await bot.send_voice(message.from_user.id, voice, caption="Ответ от бота")
-
-    # Удаление временного файла
-    os.remove(out_filename)
+# Главное меню с кнопками для команд
+def main_menu():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="/start"), KeyboardButton(text="/role")],
+        ],
+        resize_keyboard=True,
+    )
 
 
-# Хэндлер на получение голосового и аудио сообщения
-@dp.message_handler(
-    content_types=[
-        types.ContentType.VOICE,
-        types.ContentType.AUDIO,
-        types.ContentType.DOCUMENT,
-    ]
-)
-async def voice_message_handler(message: types.Message):
-    """
-    Обработчик на получение голосового и аудио сообщения.
-    """
-    if message.content_type == types.ContentType.VOICE:
-        file_id = message.voice.file_id
-    elif message.content_type == types.ContentType.AUDIO:
-        file_id = message.audio.file_id
-    elif message.content_type == types.ContentType.DOCUMENT:
-        file_id = message.document.file_id
-    else:
-        await message.reply("Формат документа не поддерживается")
-        return
+# Обработчик команд /start и /help
+@router.message(Command(commands=["start", "help"]))
+async def cmd_start_and_help(message: Message):
+    # user_id = message.from_user.id
+    await message.answer(
+        f"""Привет! Я Паровозик - чат-бот, который поможет тебе ответить на вопросы по документации ОАО "РЖД" !\n\n'
+Чтобы получить ответ на свой вопрос достаточно просто ввести вопрос текстом или голосом.
+Вы так же можете выбрать свою роль в компании для персонализированного ответа.
 
-    file = await bot.get_file(file_id)
-    file_path = file.file_path
-    file_on_disk = Path("", f"{file_id}.tmp")
-    await bot.download_file(file_path, destination=file_on_disk)
-    await message.reply("Аудио получено")
+/start - Начать работу
+/role - Выбрать свою роль
+""",
+        reply_markup=main_menu(),  # Отправляем главное меню
+    )
 
-    text = audio_to_text(file_on_disk)
-    if not text:
-        text = "Формат документа не поддерживается"
-    await message.answer(text)
 
-    os.remove(file_on_disk)  # Удаление временного файла
+@router.message(F.voice)
+async def handle_voice(message: Message):
+
+    voice_file_id = message.voice.file_id
+    voice_file = await bot.get_file(voice_file_id)
+
+    file_path = voice_file.file_path
+    await message.answer(
+        f"Я получил голосовое сообщение с file_id: {voice_file_id}.\nПуть к файлу: {file_path}"
+    )
+
+    # Скачивание голосового сообщения
+    voice = await bot.download_file(file_path)
+    file_path = f"./tmp/voice_{message.from_user.id}.ogg"
+    with open(file_path, "wb") as f:
+        f.write(voice.read())
+
+    query = audio_to_text(file_path)
+
+    user_id = message.from_user.id
+    user_role = user_id2role[user_id]
+
+    answer = generate_answer(query, f"Роль пользователя в компании: {user_role}")
+
+    await message.answer(answer)
+
+
+@router.message(F.text)
+async def handle_text(message: Message):
+    user_id = message.from_user.id
+    user_role = user_id2role[user_id]
+
+    query = message.text
+
+    answer = generate_answer(query, f"Роль пользователя в компании: {user_role}")
+
+    await message.answer(answer)
+
+
+# Регистрация роутера в диспетчере
+dp.include_router(router)
+
+
+# Middleware для сбора статистики
+class UserStatisticsMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event: Update, data: dict[str, any]) -> any:
+        user = event.from_user
+        if not (user.id in user_id2role):
+            user_id2role[user.id] = "простой сотрудник"
+
+        if isinstance(event, Message):
+
+            logging.info(
+                f"Пользователь {user.id} ({user.first_name}) отправил сообщение: {event.text}"
+            )
+        elif isinstance(event, CallbackQuery):
+            logging.info(
+                f"Пользователь {user.id} ({user.first_name}) нажал на кнопку: {event.data}"
+            )
+
+        # Не блокируем следующие обработчики, передаем выполнение дальше
+        return await handler(event, data)
+
+
+# Регистрация middleware для сбора статистики
+dp.message.middleware(UserStatisticsMiddleware())
+dp.callback_query.middleware(UserStatisticsMiddleware())
+
+
+async def main():
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    # Запуск бота
-    print("Запуск бота")
-    try:
-        executor.start_polling(dp, skip_updates=True)
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    import asyncio
+
+    asyncio.run(main())

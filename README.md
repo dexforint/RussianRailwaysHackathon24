@@ -35,7 +35,8 @@ pip install requirements.txt
 2. Скопируйте файл .env.example и переименуйте его в `.env`
 3. Создайте телеграм бота в https://t.me/BotFather, скопируйте токен
 4. В самом файле `.env` вставте токен для значения `TELEGRAM_TOKEN`
-5. Запустите бота
+5. Скачайте данные ![data](https://drive.google.com/file/d/1PZZ_Rkq84rV-BDu5dv9GhWzTIcufR9v5/view?usp=drive_link), разархивируйте и поместите в папку `data`
+6. Запустите бота
 
 ```bash
 python bot.py
