@@ -22,7 +22,13 @@
 
 https://t.me/ParovozicBot
 
+## Рабочий notebook (Google Colab)
+
+https://colab.research.google.com/drive/1qsV1-V5dPeQy-PB0wnd662MlHU_I0rwR?usp=sharing
+
 ## Установка и запуск
+
+Disclaimer: могут быть ошибки из-за разных платформ: на Windows 10 работало хорошо, а на Linux - выскакивали ошибки, но мы их не исправили, так как времени оставалось мало. Поэтому лучше используйте Notebook в Google Colab.
 
 Язык программирования: **Python (3.12)**
 

@@ -46,8 +46,8 @@ def generate_summary_questions_keywords_for_chunk(chunk: str, context: str):
     return data
 
 
-def generate_paraphrases_keywords_pseduoanswers_for_query(query: str):
-    prompt = get_prompt("prompt_for_query", query=query)
+def generate_paraphrases_keywords_pseduoanswers_for_query(query: str, user_info):
+    prompt = get_prompt("prompt_for_query", query=query, context=user_info)
 
     response = get_llm_response(prompt)
 

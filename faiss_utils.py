@@ -64,23 +64,36 @@ def load_index(file_path, use_gpu=True):
 
 
 indexes = {
-    "": load_index(""),
-    "": load_index(""),
-    "": load_index(""),
-    "": load_index(""),
+    "summary": (
+        load_index("./data/summary_index.faiss"),
+        None,
+    ),
+    "keywords": (
+        load_index("./data/keyword_index.faiss"),
+        pickle.load(open("./data/keyword_id2chunk_id.pkl", "rb")),
+    ),
+    "passage_questions": (
+        load_index("./data/passage_question_index.faiss"),
+        pickle.load(open("./data/question_id2chunk_id.pkl", "rb")),
+    ),
+    "query_questions": (
+        load_index("./data/query_question_index.faiss"),
+        pickle.load(open("./data/question_id2chunk_id.pkl", "rb")),
+    ),
 }
 
 
 # Функция для поиска ближайших векторов
 def search_in_index(index_name, query_vectors, k=32):
-    index = indexes[index_name]
+    index, id2chunk_id = indexes[index_name]
     distances, indices = index.search(query_vectors, k)  # Поиск ближайших k векторов
 
-    doc_id2score = {}
+    chunk_id2score = {}
     for dist, idx in zip(distances, indices):
-        doc_id2score[idx] = 1 - (dist + 1) / 2
+        chunk_id = id2chunk_id[idx]
+        chunk_id2score[chunk_id] = 1 - (dist + 1) / 2
 
-    return doc_id2score
+    return chunk_id2score
 
 
 def main():
